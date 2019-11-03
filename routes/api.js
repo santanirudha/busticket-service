@@ -2,9 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Ticket = require('../models/Ticket');
 const Joi = require('joi');
-
-const min = 1;
-const max = 40;
+const { seatValidation, typeValidation } = require('../validation');
 
 //View all tickets
 router.get('/tickets', async (req, res) => {
@@ -19,12 +17,10 @@ router.get('/tickets', async (req, res) => {
 //View Ticket Status
 router.get('/status/seat/:seat', async (req, res) => {
 	// input validation - seat should be a number and between 1-40
-	let seatValidation = Joi.validate(req.params.seat, Joi.number().min(min).max(max).required());
+	let { error } = seatValidation(req.params.seat);
 
-	if (seatValidation.error) {
-		res.status(404).send(seatValidation.error);
-		return;
-	}
+	if (error) return res.status(404).send(error);
+
 	try {
 		let status = await Ticket.findOne({ seat: parseInt(req.params.seat) }).select('status');
 		res.json(status);
@@ -36,19 +32,18 @@ router.get('/status/seat/:seat', async (req, res) => {
 //View Details of person owning the ticket
 router.get('/details/seat/:seat', async (req, res) => {
 	// input validation - seat should be a number and between 1-40
-	let seatValidation = Joi.validate(req.params.seat, Joi.number().min(min).max(max).required());
+	let { error } = seatValidation(req.params.seat);
 
-	if (seatValidation.error) {
-		res.status(404).send(seatValidation.error);
-		return;
-	}
+	if (error) return res.status(404).send(error);
 
 	try {
 		let status = await Ticket.findOne({ seat: parseInt(req.params.seat) })
 			.select('status')
 			.select('first_name')
 			.select('last_name')
-			.select('gender');
+			.select('gender')
+			.select('email')
+			.select('mobile');
 		res.json(status);
 	} catch (error) {
 		res.json({ message: error });
@@ -58,12 +53,10 @@ router.get('/details/seat/:seat', async (req, res) => {
 // adding empty seats
 router.post('/add', async (req, res) => {
 	// input validation - seat should be a number and between 1-40
-	let seatValidation = Joi.validate(req.body.seat, Joi.number().min(min).max(max).required());
+	let { error } = seatValidation(req.body);
 
-	if (seatValidation.error) {
-		res.status(400).send(seatValidation.error);
-		return;
-	}
+	if (error) return res.status(404).send(error);
+
 	let ticket = new Ticket({
 		seat: req.body.seat,
 		status: 'open'
@@ -100,20 +93,14 @@ router.get('/tickets/closed', async (req, res) => {
 //Update the ticket status (open/close + adding user details)
 router.put('/status/:seat/:type', async (req, res) => {
 	// input validation - seat should be a number and between 1-40
-	let seatValidation = Joi.validate(req.params.seat, Joi.number().min(min).max(max).required());
+	let { seatError } = seatValidation(req.params.seat);
 
-	if (seatValidation.error) {
-		res.status(400).send(seatValidation.error);
-		return;
-	}
+	if (seatError) return res.status(404).send(seatError);
 
 	// input validation - type should be a string and should be 'open' or 'close'
-	let typeValidation = Joi.validate(req.params.type, Joi.string().valid('open').valid('close').required());
+	let { typeError } = typeValidation(req.params.type);
 
-	if (typeValidation.error) {
-		res.status(400).send(typeValidation.error);
-		return;
-	}
+	if (typeError) return res.status(400).send(typeError);
 
 	try {
 		let type = req.params.type;
@@ -121,7 +108,10 @@ router.put('/status/:seat/:type', async (req, res) => {
 			try {
 				let ticket = await Ticket.updateOne(
 					{ seat: req.params.seat },
-					{ $set: { status: 'open' }, $unset: { first_name: 1, last_name: 1, gender: 1 } }
+					{
+						$set: { status: 'open' },
+						$unset: { first_name: 1, last_name: 1, gender: 1, email: 1, mobile: 1 }
+					}
 				);
 				res.json(ticket);
 			} catch (error) {
@@ -132,7 +122,9 @@ router.put('/status/:seat/:type', async (req, res) => {
 			let ticketSchema = {
 				first_name: Joi.string().min(3).required(),
 				last_name: Joi.string().min(3).required(),
-				gender: Joi.string().valid('M').valid('F').valid('U').required()
+				gender: Joi.string().valid('M').valid('F').valid('U').required(),
+				email: Joi.string().email().required(),
+				mobile: Joi.number().integer().min(1000000000).max(9999999999).required()
 			};
 
 			let validation = Joi.validate(req.body, ticketSchema);
@@ -150,7 +142,9 @@ router.put('/status/:seat/:type', async (req, res) => {
 							status: 'close',
 							first_name: req.body.first_name,
 							last_name: req.body.last_name,
-							gender: req.body.gender
+							gender: req.body.gender,
+							email: req.body.email,
+							mobile: req.body.mobile
 						}
 					}
 				);
@@ -162,18 +156,6 @@ router.put('/status/:seat/:type', async (req, res) => {
 	} catch (error) {
 		res.json({ message: error });
 	}
-});
-
-// request params
-router.get('/tickets/:first_name/:last_name', (req, res) => {
-	let first_name = req.params.first_name;
-	let last_name = req.params.last_name;
-	res.send(first_name + ' ' + last_name);
-});
-
-// query params
-router.get('/tickets/:first_name/', (req, res) => {
-	res.send(req.query);
 });
 
 module.exports = router;

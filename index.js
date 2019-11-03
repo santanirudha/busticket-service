@@ -12,6 +12,7 @@ app.use(bodyParser.json());
 app.use('/api', apiRoute);
 app.use('/admin', adminRoute);
 
+// As per Mongoose Documentation
 const options = {
 	useNewUrlParser: true,
 	useCreateIndex: true,
